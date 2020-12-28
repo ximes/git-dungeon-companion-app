@@ -20,19 +20,22 @@ defmodule Dungeon.Core.Game do
 
   def register_dungeon_master(game, team) do
     dungeon_master = %Team{team | dungeon_master: true}
+
     %{game | dungeon_master: dungeon_master}
+    |> update_to_state_or_setup(:ready)
   end
 
   def register_repo(game, game_repo_name \\ "git-dungeon-playground") do
     %{game | repo_url: game_repo_name}
+    |> update_to_state_or_setup(:ready)
   end
 
   def register_team(game, team) do
     # TODO: set team order
     team = %Team{team | dungeon_master: false}
 
-    game
-    |> Map.put(:teams, [team | Map.get(game, :teams)])
+    Map.put(game, :teams, [team | Map.get(game, :teams)])
+    |> update_to_state_or_setup(:ready)
   end
 
   def ready?(game) do
@@ -45,8 +48,31 @@ defmodule Dungeon.Core.Game do
   end
 
   # TODO: do something amazing with state transitions
-  def update_game_state(game, :finished = new_state), do: update_state_map(game, new_state)
-  def update_game_state(game, new_state), do: update_state_map(game, new_state)
+  def start!(game) do
+    ready_check = ready?(game)
+
+    case ready_check do
+      {:ok} ->
+        game
+        |> update_state_map(:started)
+        |> notify_clients
+
+      {:error, _} ->
+        update_state_map(game, :setup)
+        ready_check
+    end
+  end
+
+  def pause!(game), do: update_state_map(game, :paused)
+  def restore!(game), do: update_state_map(game, :started)
+  def end!(game), do: update_state_map(game, :finished)
+
+  defp update_to_state_or_setup(game, state) do
+    case ready?(game) do
+      {:ok} -> update_state_map(game, state)
+      {:error, _} -> update_state_map(game, :setup)
+    end
+  end
 
   defp update_state_map(game, new_state) do
     case Enum.member?(@allowed_states, new_state) do
@@ -57,5 +83,10 @@ defmodule Dungeon.Core.Game do
       true ->
         Map.put(game, :status, new_state)
     end
+  end
+
+  defp notify_clients(game) do
+    # TODO:
+    game
   end
 end
